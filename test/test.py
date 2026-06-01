@@ -137,8 +137,12 @@ async def test_vga_sync_timing(dut):
     cocotb.start_soon(clock.start())
     await reset(dut)
 
-    # Wait for vsync rising edge (end of sync pulse = start of back porch)
-    while not (int(dut.uo_out.value) & 0x08):
+    # After reset the VGA counter may already be in a high-vsync region.
+    # First drain any ongoing high period so we don't exit early.
+    while int(dut.uo_out.value) & 0x08:          # wait while vsync is HIGH
+        await ClockCycles(dut.clk, 1)
+    # Now wait for vsync rising edge (end of sync pulse = start of back porch)
+    while not (int(dut.uo_out.value) & 0x08):    # wait while vsync is LOW
         await ClockCycles(dut.clk, 1)
     # From back porch start, skip to next sync pulse
     await ClockCycles(dut.clk, H_TOTAL * (V_BACK + V_DISPLAY + V_FRONT))
