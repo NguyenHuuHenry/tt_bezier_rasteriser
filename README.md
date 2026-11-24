@@ -1,11 +1,11 @@
 ![GDS](../../workflows/gds/badge.svg) ![Docs](../../workflows/docs/badge.svg) ![Test](../../workflows/test/badge.svg)
 
 # Bezier Curve VGA Rasterizer
-### Tiny Tapeout — Sky130A · 25 MHz · *2×1 tile target (pending submission)*
+### Tiny Tapeout — Sky130A · 25 MHz · *1×2 tile target (pending submission)*
 
 > **A real-time quadratic Bézier curve rasterizer implemented entirely in synthesisable Verilog, targeting the Tiny Tapeout ASIC shuttle. No CPU, no framebuffer — pure combinatorial and sequential logic driving a live 640×480 VGA signal.**
 >
-> ⚠️ **Shuttle status:** The current tapeout run only supported 1×1 tiles, which this design overflows. The RTL is complete and GDS-verified at 2×1, and will be submitted on the next compatible shuttle run.
+> ⚠️ **Shuttle status:** The current tapeout run only supported 1×1 tiles, which this design overflows. The RTL is complete and GDS-verified at 1×2, and will be submitted on the next compatible shuttle run.
 
 ---
 
@@ -30,9 +30,9 @@
 
 ## Overview
 
-This project renders a single quadratic Bézier curve to a **640×480 VGA display** in real-time, targeting a **2×1 Tiny Tapeout tile** (~33,000 µm² core area, Sky130A PDK). The design is complete and GDS-verified, but has not yet been submitted to a shuttle — the tapeout run this was initially developed for only supported 1×1 tiles, which the design outgrew. Submission to a 2×1-compatible run is planned next.
+This project renders a single quadratic Bézier curve to a **640×480 VGA display** in real-time, targeting a **1×2 Tiny Tapeout tile** (one tile wide, two tall; ~33,000 µm² core area, Sky130A PDK). The design is complete and GDS-verified, but has not yet been submitted to a shuttle — the tapeout run this was initially developed for only supported 1×1 tiles, which the design outgrew. Submission to a 1×2-compatible run is planned next.
 
-The key constraint is that Sky130A provides roughly **~1,600 standard-cell flip-flops per mm²**. A naïve framebuffer for 640×480 pixels would require 307,200 bits — approximately **60× more flip-flops than the entire tile can hold**. This design solves the problem by eliminating the framebuffer entirely and re-computing each row of the curve on-the-fly during the horizontal blanking interval.
+The key constraint is flip-flop area: a Sky130A `dfrtp_2` flip-flop is ~27.6 µm², so a single 1×1 tile (16,493 µm² core) could hold only **~600 flip-flops** even with no logic at all. A naïve framebuffer for 640×480 pixels would require 307,200 bits — roughly **500× more flip-flops than the tile can hold**. This design solves the problem by eliminating the framebuffer entirely and re-computing each row of the curve on-the-fly during the horizontal blanking interval.
 
 ---
 
@@ -46,7 +46,7 @@ The key constraint is that Sky130A provides roughly **~1,600 standard-cell flip-
 | **Framebuffer** | None — single 160-bit row buffer, refilled every H-blank |
 | **Rasterization** | 129-step forward-difference stepper, runs in 130 clock cycles |
 | **Control** | 5 edge-triggered pins: Load X, Load Y, Add Point, Submit, Clear |
-| **Tile size** | 2×1 Tiny Tapeout (≈ 334×108 µm core) — *pending shuttle submission* |
+| **Tile size** | 1×2 Tiny Tapeout (one tile wide, two tall; ~33,000 µm² core) — *pending shuttle submission* |
 | **Process** | SkyWater Sky130A 130 nm |
 | **Clock** | 25 MHz pixel clock |
 
@@ -264,7 +264,7 @@ make
 
 | Metric | Value |
 |---|---|
-| Tile size | 2×1 (≈ 334×108 µm) |
+| Tile size | 1×2 (one tile wide, two tall; ~33,000 µm² core) |
 | PDK | SkyWater Sky130A |
 | Target density | 60% |
 | Clock period | 40 ns (25 MHz) |
@@ -317,7 +317,7 @@ Curve stored as 3 control points (3 × 8-bit X + 3 × 7-bit Y = 45 bits)
 Synthesised cells   : 2,098
 Total cell area     : 25,162 µm²
 Available core area : 16,493 µm²
-Utilisation         : 179.6%   ← GDS action fails: GPL-0301
+Utilisation         : 152.6%   ← GDS action fails: GPL-0301
 ```
 
 **Why it still failed:**
@@ -327,7 +327,7 @@ The forward-difference registers (`x_d0`/`y_d0` at 23 bits, `x_d1`/`y_d1` at 18 
 Key area contributors beyond the flip-flops:
 | Source | Approx. area |
 |---|---|
-| 346 × `dfrtp_2` FFs (row_buf + fwd-diff regs) | ~9,559 µm² |
+| 346 flip-flops after synthesis (row_buf 160 + fwd-diff regs 106 + control points, staging, scan and VGA counters) | ~9,559 µm² |
 | 160:1 mux tree for `row_buf[x_pix]` write | ~1,800 µm² |
 | 160:1 mux tree for `row_buf[lx]` read | ~800 µm² |
 | Adder chains (d1 init, d2 init, d0+d1, d1+d2) | ~6,000 µm² |
@@ -337,16 +337,16 @@ Key area contributors beyond the flip-flops:
 
 ---
 
-### Iteration 3 — No Framebuffer, 2×1 Tile ✅ *(GDS passes — not yet submitted)*
+### Iteration 3 — No Framebuffer, 1×2 Tile ✅ *(GDS passes — not yet submitted)*
 
-**The fix:** Upgrade from a 1×1 tile to a **2×1 tile** in `info.yaml`. This doubles the available core area to approximately **33,000 µm²**, giving 76% utilisation — within the 60–80% comfortable range for LibreLane place-and-route.
+**The fix:** Upgrade from a 1×1 tile to a **1×2 tile** in `info.yaml`. This doubles the available core area to approximately **33,000 µm²**, giving 76% utilisation — within the 60–80% comfortable range for LibreLane place-and-route.
 
 ```yaml
 # info.yaml
-tiles: "2x1"   # was "1x1"
+tiles: "1x2"   # was "1x1"
 ```
 
-No RTL changes were required. The identical synthesised design that overflowed a 1×1 tile places and routes cleanly on a 2×1 tile.
+No RTL changes were required. The identical synthesised design that overflowed a 1×1 tile places and routes cleanly on a 1×2 tile.
 
 **Verified numbers:**
 ```
@@ -355,23 +355,23 @@ Core area     : ~33,000 µm²
 Utilisation   : ~76%   ← GDS passes locally ✅
 ```
 
-**Current status:** The tapeout run this project was developed against only accepted 1×1 tile designs, so this version was not submitted. The 2×1 configuration is ready and will be submitted on the next shuttle that supports it.
+**Current status:** The tapeout run this project was developed against only accepted 1×1 tile designs, so this version was not submitted. The 1×2 configuration is ready and will be submitted on the next shuttle that supports it.
 
-> **Lesson:** When combinatorial logic can't be shrunk further, the next lever is simply buying more area. On Tiny Tapeout, going from 1×1 to 2×1 doubles your budget and costs one additional tile slot in the shared die — a fair trade for a design that genuinely needs it.
+> **Lesson:** When combinatorial logic can't be shrunk further, the next lever is simply buying more area. On Tiny Tapeout, going from 1×1 to 1×2 doubles your budget and costs one additional tile slot in the shared die — a fair trade for a design that genuinely needs it.
 
 ---
 
 ## Future Improvements — Next Tapeout
 
-The no-framebuffer architecture was a workaround forced by the 1×1 tile area constraint. The immediate next step is submitting the existing 2×1 design to a compatible shuttle run — no RTL changes needed, just a slot on the right tapeout. Beyond that, with even more silicon, the design could be significantly more capable.
+The no-framebuffer architecture was a workaround forced by the 1×1 tile area constraint. The immediate next step is submitting the existing 1×2 design to a compatible shuttle run — no RTL changes needed, just a slot on the right tapeout. Beyond that, with even more silicon, the design could be significantly more capable.
 
 ### Getting a Real Framebuffer
 
-The single biggest improvement for a future tapeout would be allocating enough area to store a complete rendered image. On Sky130A, a **1bpp 160×120 framebuffer** requires 19,200 flip-flops (~530,000 µm²) — equivalent to roughly **16× the current 2×1 tile**. That is achievable on a Tiny Tapeout **4×4 tile** (the largest standard size), which provides approximately 530,000–560,000 µm² of core area.
+The single biggest improvement for a future tapeout would be allocating enough area to store a complete rendered image. On Sky130A, a **1bpp 160×120 framebuffer** requires 19,200 flip-flops (~530,000 µm²) — equivalent to roughly **16× the current 1×2 tile**. That is achievable on a Tiny Tapeout **4×4 tile** (the largest standard size), which provides approximately 530,000–560,000 µm² of core area.
 
 With a real framebuffer:
 
-- The Bézier stepper would run **once per frame** during the vertical blanking interval (~1,430 idle cycles), eliminating the tight 160-cycle H-blank budget entirely.
+- The Bézier stepper would run **once per frame** during the vertical blanking interval (45 blank lines × 800 clocks ≈ 36,000 idle cycles), eliminating the tight 160-cycle H-blank budget entirely.
 - Multiple curves could be accumulated into the framebuffer over successive frames before displaying — enabling scenes rather than single curves.
 - Rendering operations (fill, erase, blend) become possible since every pixel is persistently addressable.
 - The control interface could accept a stream of curve commands rather than one curve at a time.
@@ -380,18 +380,18 @@ With a real framebuffer:
 
 | Improvement | Tile requirement | Notes |
 |---|---|---|
-| **Submit current design to 2×1 shuttle** | 2×1 | RTL complete, GDS verified — just needs a compatible run |
+| **Submit current design to 1×2 shuttle** | 1×2 | RTL complete, GDS verified — just needs a compatible run |
 | **True 1bpp framebuffer (160×120)** | 4×4 | Eliminates H-blank timing constraint entirely |
 | **Greyscale framebuffer (160×120, 2bpp)** | 4×4+ | 38,400 FFs; enables anti-aliased rendering |
 | **Multiple simultaneous curves (up to 8)** | 2×2 | Time-multiplex H-blank scanner; 8 × 130 = 1,040 cycles needed vs 160 available — requires V-blank rendering |
-| **Cubic Bézier support** | 2×1 | Adds one extra accumulator register pair; fits in current tile with minor rework |
+| **Cubic Bézier support** | 1×2 | Adds one extra accumulator register pair; fits in current tile with minor rework |
 | **Filled curve (scanline span buffer)** | 2×2 | Store left/right X extents per row instead of a bitfield; ~240 bits total |
-| **UART or SPI input** | 2×1 | Replace DIP-switch protocol; allows host computer to drive animations in real time |
+| **UART or SPI input** | 1×2 | Replace DIP-switch protocol; allows host computer to drive animations in real time |
 | **Higher resolution canvas (320×240)** | 4×2 | Doubles the row buffer to 320 bits and requires 8× more framebuffer FFs |
 
 ### Architectural Note on Framebuffer vs. Scanline Rendering
 
-This design deliberately trades **rendering flexibility for area efficiency**: because there is no persistent pixel store, the image cannot accumulate across frames, cannot be partially updated, and cannot store more information than a single row at a time. The trade-off was necessary to squeeze inside a 2×1 tile — itself the result of the 1×1 design overflowing.
+This design deliberately trades **rendering flexibility for area efficiency**: because there is no persistent pixel store, the image cannot accumulate across frames, cannot be partially updated, and cannot store more information than a single row at a time. The trade-off was necessary to squeeze inside a 1×2 tile — itself the result of the 1×1 design overflowing.
 
 A future design targeting a **4×4 tile** could adopt a conventional GPU-style split: a *geometry engine* that evaluates curves into the framebuffer during V-blank, and a *scan-out engine* that reads the framebuffer linearly during active video. These two paths are naturally non-conflicting and require no arbitration logic, keeping the design simple while enabling far richer output.
 
@@ -427,14 +427,14 @@ This project was designed as an introduction to digital ASIC design through a co
 
 > **Status: Not yet submitted to a shuttle.**
 >
-> The current tapeout run only supported 1×1 tiles. This design targets a 2×1 tile and is ready for submission — it is waiting for a compatible Tiny Tapeout shuttle run. Results will be recorded here once a chip has been fabricated and received.
+> The current tapeout run only supported 1×1 tiles. This design targets a 1×2 tile and is ready for submission — it is waiting for a compatible Tiny Tapeout shuttle run. Results will be recorded here once a chip has been fabricated and received.
 
 | Milestone | Status |
 |---|---|
 | RTL complete | ✅ |
 | Simulation tests passing (cocotb) | ✅ |
-| GDS passes at 2×1 (LibreLane) | ✅ |
-| Submitted to shuttle | ⏳ Pending next 2×1-compatible run |
+| GDS passes at 1×2 (LibreLane) | ✅ |
+| Submitted to shuttle | ⏳ Pending next 1×2-compatible run |
 | Chip received | ⏳ TBD |
 | Bring-up on eval board | ⏳ TBD |
 
